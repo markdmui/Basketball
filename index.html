@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fffefa">
+  <title>Flick Court</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #fffefa;
+      --ink: #1d1b19;
+      --muted: #625d55;
+      --rule: #d9d3ca;
+      --red: #bf3828;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--ink);
+      background: #ece8e1;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main {
+      width: min(100%, 540px);
+      min-height: 100vh;
+      min-height: 100dvh;
+      margin-inline: auto;
+      padding: min(10vmin, 54px);
+      background: var(--paper);
+    }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    h1 { margin: 0; font-size: clamp(29px, 8vw, 43px); line-height: 1; letter-spacing: -0.065em; }
+    button {
+      min-height: 44px;
+      padding: 0 10px;
+      border: 1px solid var(--rule);
+      background: transparent;
+      color: var(--ink);
+      cursor: pointer;
+      white-space: nowrap;
+      font: 700 12px Arial, Helvetica, sans-serif;
+    }
+    button:hover { border-color: var(--ink); }
+    :focus-visible { outline: 2px solid var(--red); outline-offset: 3px; }
+    .scoreboard {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin: clamp(17px, 5vh, 36px) 0 0;
+    }
+    .score { border-top: 1px solid var(--ink); padding-top: 8px; }
+    .score dt { font-size: 12px; color: var(--muted); }
+    .score dd {
+      margin: 3px 0 0;
+      font-size: clamp(27px, 7.5vw, 40px);
+      line-height: 1;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.06em;
+    }
+    .score.active { color: var(--red); border-color: var(--red); }
+    .score span { color: var(--muted); font-size: 0.69em; font-weight: 400; letter-spacing: -0.045em; }
+    .score span b { font-weight: inherit; }
+    .prompt { margin-top: clamp(19px, 4.3vh, 32px); }
+    .prompt p { margin: 0; }
+    #zone {
+      color: var(--red);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    #cue { min-height: 2.35em; margin-top: 4px; font-size: clamp(18px, 5.4vw, 24px); line-height: 1.15; letter-spacing: -0.035em; font-weight: 700; }
+    canvas {
+      display: block;
+      width: 100%;
+      aspect-ratio: 400 / 394;
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    canvas:active { cursor: grabbing; }
+    .guide { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding-top: 11px; border-top: 1px solid var(--rule); }
+    .guide p { margin: 0; font-size: 12px; line-height: 1.35; color: var(--muted); }
+    .guide strong { display: block; margin-bottom: 2px; color: var(--ink); }
+    .guide .active strong { color: var(--red); }
+    .move-tip { margin: clamp(16px, 3.5vh, 24px) 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .keyboard-tip { display: none; }
+    @media (pointer: fine) { .keyboard-tip { display: inline; } }
+    @media (max-height: 600px) and (max-width: 540px) {
+      .scoreboard { margin-top: 14px; }
+      .prompt { margin-top: 15px; }
+      .move-tip { margin-top: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Flick Court</h1>
+      <button type="button" id="reset">Reset score</button>
+    </header>
+    <dl class="scoreboard" aria-label="Baskets made out of shots taken">
+      <div class="score" id="far-score">
+        <dt>Far shots</dt>
+        <dd><b id="far-made">0</b><span> / <b id="far-total">0</b></span></dd>
+      </div>
+      <div class="score active" id="near-score">
+        <dt>Near shots</dt>
+        <dd><b id="near-made">0</b><span> / <b id="near-total">0</b></span></dd>
+      </div>
+    </dl>
+    <section class="prompt" aria-label="Shot instruction">
+      <p id="zone">Near range</p>
+      <p id="cue" role="status">Flick up for a light shot.</p>
+    </section>
+    <canvas id="court" tabindex="0" aria-label="Side-view basketball court" aria-describedby="move-tip" aria-keyshortcuts="ArrowLeft ArrowRight Space Shift+Space">
+      This game needs a browser with canvas support.
+    </canvas>
+    <div class="guide">
+      <p id="far-guide"><strong>Far range</strong>Pull down, then flick up.</p>
+      <p id="near-guide" class="active"><strong>Near range</strong>Flick up.</p>
+    </div>
+    <p class="move-tip" id="move-tip">Drag left or right to move the black ball. Swipe anywhere on the court to shoot.<span class="keyboard-tip"> On a keyboard, use ← or → to move, Space for a light shot, or Shift + Space for a power shot.</span></p>
+  </main>
+  <script>
+    'use strict';
+
+    const court = document.getElementById('court');
+    const context = court.getContext('2d');
+    const zoneLabel = document.getElementById('zone');
+    const cue = document.getElementById('cue');
+    const ink = '#1d1b19';
+    const red = '#bf3828';
+    const width = 400;
+    const height = 394;
+    const floor = 320;
+    const boundary = 194;
+    const minX = 26;
+    const maxX = 274;
+    const startX = 246;
+    const radius = 9;
+    const hoop = { left: 310, right: 352, y: 103, board: 355, top: 55, bottom: 114, pole: 377 };
+    const rimCenter = (hoop.left + hoop.right) / 2;
+    const gravity = 910;
+    const instructions = { near: 'Flick up for a light shot.', far: 'Pull down, then flick up.' };
+    const scores = Object.fromEntries(['far', 'near'].map(name => [name, {
+      made: 0,
+      total: 0,
+      madeLabel: document.getElementById(`${name}-made`),
+      totalLabel: document.getElementById(`${name}-total`),
+      card: document.getElementById(`${name}-score`),
+      guide: document.getElementById(`${name}-guide`)
+    }]));
+
+    let shooterX = startX;
+    let gesture = null;
+    let finger = null;
+    let shot = null;
+    let trace = [];
+    let netKick = 0;
+    let previousFrame = 0;
+    let frame = 0;
+
+    const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+    const zone = () => shooterX < boundary ? 'far' : 'near';
+
+    function say(message) {
+      if (cue.textContent !== message) cue.textContent = message;
+    }
+
+    function showZone() {
+      const current = zone();
+      zoneLabel.textContent = current === 'near' ? 'Near range' : 'Far range';
+      for (const [name, score] of Object.entries(scores)) {
+        score.card.classList.toggle('active', name === current);
+        score.guide.classList.toggle('active', name === current);
+      }
+      say(instructions[current]);
+    }
+
+    function updateScore(score) {
+      score.madeLabel.textContent = score.made;
+      score.totalLabel.textContent = score.total;
+    }
+
+    function line(points, color, weight = 1, dash = []) {
+      if (points.length < 2) return;
+      context.beginPath();
+      context.moveTo(points[0].x, points[0].y);
+      for (const point of points.slice(1)) context.lineTo(point.x, point.y);
+      context.strokeStyle = color;
+      context.lineWidth = weight;
+      context.setLineDash(dash);
+      context.stroke();
+      context.setLineDash([]);
+    }
+
+    function segment(x1, y1, x2, y2, color, weight = 1) {
+      line([{ x: x1, y: y1 }, { x: x2, y: y2 }], color, weight);
+    }
+
+    function disk(x, y, size, color) {
+      context.beginPath();
+      context.arc(x, y, size, 0, 2 * Math.PI);
+      context.fillStyle = color;
+      context.fill();
+    }
+
+    function draw(now) {
+      context.clearRect(0, 0, width, height);
+      const near = zone() === 'near';
+      const netBottom = hoop.y + 32 + netKick * 6;
+      const netOffset = netKick * 4;
+
+      // Small marks along the baseline show how far the shooter can move.
+      segment(12, floor, 386, floor, ink, 1.15);
+      for (let x = minX; x <= maxX; x += 14) segment(x, floor + 1, x, floor + 5, '#d9d3ca');
+      segment(boundary, floor - 14, boundary, floor + 13, '#8d8377', 1);
+      segment(near ? boundary : minX, floor + 10, near ? maxX : boundary, floor + 10, red, 1.25);
+
+      line([{ x: hoop.pole, y: floor }, { x: hoop.pole, y: 88 }, { x: hoop.board, y: 88 }], ink, 1.6);
+      segment(hoop.board, hoop.top, hoop.board, hoop.bottom, ink, 3);
+      segment(hoop.right, hoop.y, hoop.board, hoop.y, ink, 2);
+      for (let i = 0; i < 5; i++) {
+        const topX = hoop.left + (hoop.right - hoop.left) * i / 4;
+        const bottomX = rimCenter - 11 + i * 5.5 + netOffset;
+        segment(topX, hoop.y + 2, bottomX, netBottom, '#9e9589', 0.9);
+        segment(topX, hoop.y + 2, rimCenter + 11 - i * 5.5 + netOffset, netBottom, '#b3aa9e', 0.7);
+      }
+      segment(rimCenter - 11 + netOffset, netBottom, rimCenter + 11 + netOffset, netBottom, '#9e9589', 0.9);
+
+      line(trace, shot?.scored ? '#a99e91' : '#c5bcb0', 1.3, [3, 4]);
+      if (finger) {
+        const opacity = gesture ? 0.52 : 0.52 * clamp((finger.until - now) / 560, 0, 1);
+        const tip = finger.points.at(-1);
+        line(finger.points, `rgba(191, 56, 40, ${opacity})`, 2.1, [4, 4]);
+        if (finger.points.length > 1) disk(tip.x, tip.y, 3.4, `rgba(191, 56, 40, ${opacity})`);
+      }
+
+      segment(hoop.left, hoop.y, hoop.right, hoop.y, red, 2.4);
+      disk(shooterX, floor - 2, radius + 4, '#e7e0d6');
+      disk(shooterX, shot ? floor - 5 : floor - 11, shot ? 5 : 11, ink);
+      if (shot) disk(shot.x, shot.y, radius, ink);
+    }
+
+    function schedule() {
+      if (!frame) frame = requestAnimationFrame(animate);
+    }
+
+    function animate(now) {
+      frame = 0;
+      let remaining = previousFrame ? clamp((now - previousFrame) / 1000, 0, 0.05) : 1 / 60;
+      previousFrame = now;
+      while (shot && remaining > 0) {
+        const step = Math.min(remaining, 1 / 120);
+        advanceShot(step);
+        remaining -= step;
+      }
+      if (shot && shot.landed === 0) {
+        const last = trace.at(-1);
+        if (Math.hypot(shot.x - last.x, shot.y - last.y) > 5) trace.push({ x: shot.x, y: shot.y });
+      }
+      netKick *= 0.88;
+      if (finger && !gesture && now >= finger.until) finger = null;
+      draw(now);
+      if (shot || (finger && !gesture) || netKick > 0.02) schedule();
+      else previousFrame = 0;
+    }
+
+    function resize() {
+      const box = court.getBoundingClientRect();
+      const pixels = Math.min(window.devicePixelRatio || 1, 3);
+      court.width = Math.max(1, Math.round(box.width * pixels));
+      court.height = Math.max(1, Math.round(box.height * pixels));
+      context.setTransform(court.width / width, 0, 0, court.height / height, 0, 0);
+      schedule();
+    }
+
+    function launch(lift, pull, drift) {
+      const range = zone();
+      const score = scores[range];
+      const long = range === 'far';
+      const weak = long && pull < 26;
+      const y = floor - radius - 2;
+      const powerError = long ? (pull - 58) * 0.53 + (lift - 93) * 0.15 : (lift - 65) * 0.28;
+      const aim = clamp(drift, -100, 100) * 0.62;
+      const peak = weak ? 122 : clamp((long ? 39 : 57) - powerError * 0.62, 18, 91);
+      const vy = -Math.sqrt(2 * gravity * (y - peak));
+      const timeAtRim = (-vy + Math.sqrt(Math.max(0, vy * vy - 2 * gravity * (y - hoop.y)))) / gravity;
+      const target = weak ? shooterX + (rimCenter - shooterX) * 0.53 : rimCenter + powerError + aim;
+
+      score.total++;
+      updateScore(score);
+      shot = { x: shooterX, y, vx: (target - shooterX) / timeAtRim, vy, scored: false, landed: 0, age: 0, weak, target, range };
+      trace = [{ x: shooterX, y }];
+      say(weak ? 'That stroke is short for this range.' : 'Shot away.');
+      schedule();
+    }
+
+    function bounceOffRim(ball, rimX) {
+      const dx = ball.x - rimX;
+      const dy = ball.y - hoop.y;
+      const distance = Math.hypot(dx, dy);
+      const contact = radius + 1.7;
+      if (distance >= contact || distance === 0) return;
+      const normalX = dx / distance;
+      const normalY = dy / distance;
+      const incoming = ball.vx * normalX + ball.vy * normalY;
+      ball.x = rimX + normalX * contact;
+      ball.y = hoop.y + normalY * contact;
+      if (incoming < 0) {
+        ball.vx -= 1.57 * incoming * normalX;
+        ball.vy -= 1.57 * incoming * normalY;
+      }
+    }
+
+    function advanceShot(dt) {
+      const ball = shot;
+      const oldX = ball.x;
+      const oldY = ball.y;
+      ball.age += dt;
+      ball.x += ball.vx * dt;
+      ball.y += (ball.vy + gravity * dt * 0.5) * dt;
+      ball.vy += gravity * dt;
+
+      if (!ball.scored && ball.vy > 0 && oldY <= hoop.y && ball.y > hoop.y) {
+        const fraction = (hoop.y - oldY) / (ball.y - oldY);
+        const crossing = oldX + (ball.x - oldX) * fraction;
+        if (crossing > hoop.left + radius && crossing < hoop.right - radius) {
+          ball.scored = true;
+          ball.vx *= 0.32;
+          netKick = 0.62;
+          const score = scores[ball.range];
+          score.made++;
+          updateScore(score);
+          say('Basket!');
+        }
+      }
+
+      if (!ball.scored) {
+        bounceOffRim(ball, hoop.left);
+        bounceOffRim(ball, hoop.right);
+        if (ball.y + radius > hoop.top && ball.y - radius < hoop.bottom) {
+          if (oldX <= hoop.board - radius && ball.x > hoop.board - radius) {
+            ball.x = hoop.board - radius;
+            ball.vx *= -0.58;
+          } else if (oldX >= hoop.board + radius && ball.x < hoop.board + radius) {
+            ball.x = hoop.board + radius;
+            ball.vx *= -0.58;
+          }
+        }
+      } else if (ball.y < hoop.y + 45) {
+        netKick = 1;
+      }
+
+      if (ball.y >= floor - radius && ball.vy > 0) {
+        ball.y = floor - radius;
+        ball.vy *= -0.28;
+        ball.vx *= 0.61;
+        if (!ball.landed) {
+          ball.landed = ball.age;
+          if (!ball.scored) {
+            if (ball.weak) say('Pull down first for more power.');
+            else if (ball.target < rimCenter - 8) say('Short. Give it a little more.');
+            else if (ball.target > rimCenter + 8) say('Long. Ease off a little.');
+            else say('Off the rim. Try again.');
+          }
+        }
+      }
+
+      if ((ball.landed && ball.age - ball.landed > 0.34) || ball.age > 3.4) shot = null;
+    }
+
+    function point(event, box) {
+      return { x: (event.clientX - box.left) * width / box.width, y: (event.clientY - box.top) * height / box.height };
+    }
+
+    function sample(next) {
+      const { start } = gesture;
+      const dx = next.x - start.x;
+      const dy = next.y - start.y;
+      if (!gesture.mode && Math.hypot(dx, dy) >= 8) {
+        gesture.mode = Math.abs(dx) > Math.abs(dy) * 1.18 ? 'move' : 'shot';
+      }
+
+      if (gesture.mode === 'move') {
+        shooterX = clamp(gesture.x + dx, minX, maxX);
+        if (zone() !== gesture.range) {
+          gesture.range = zone();
+          showZone();
+        }
+      } else if (gesture.mode === 'shot') {
+        if (next.y >= gesture.low.y) gesture.low = next;
+        const pull = gesture.low.y - start.y;
+        if (gesture.range === 'far' && pull >= 26) say('Now flick up.');
+      }
+
+      const last = finger.points.at(-1);
+      if (Math.hypot(next.x - last.x, next.y - last.y) >= 2) finger.points.push(next);
+      schedule();
+    }
+
+    court.addEventListener('pointerdown', event => {
+      if (shot || gesture || !event.isPrimary || event.button !== 0) return;
+      const box = court.getBoundingClientRect();
+      const start = point(event, box);
+      gesture = { id: event.pointerId, start, low: start, x: shooterX, range: zone(), mode: null };
+      finger = { points: [start], until: Infinity };
+      trace = [];
+      court.setPointerCapture(event.pointerId);
+      say(instructions[zone()]);
+      schedule();
+    });
+
+    court.addEventListener('pointermove', event => {
+      if (gesture?.id !== event.pointerId) return;
+      const box = court.getBoundingClientRect();
+      const samples = event.getCoalescedEvents?.() ?? [];
+      for (const entry of samples.length ? samples : [event]) sample(point(entry, box));
+    });
+
+    court.addEventListener('pointerup', event => {
+      if (gesture?.id !== event.pointerId) return;
+      const end = point(event, court.getBoundingClientRect());
+      sample(end);
+      const { mode, start, low } = gesture;
+      const pull = low.y - start.y;
+      const lift = low.y - end.y;
+      const drift = end.x - low.x;
+      gesture = null;
+      finger.until = performance.now() + 560;
+      if (mode === 'shot' && lift >= 24 && lift > Math.abs(drift) * 0.9) {
+        launch(lift, pull, drift);
+      } else {
+        say(instructions[zone()]);
+      }
+    });
+
+    function cancelGesture(event) {
+      if (gesture?.id !== event.pointerId) return;
+      gesture = null;
+      finger = null;
+      say(instructions[zone()]);
+      schedule();
+    }
+
+    court.addEventListener('pointercancel', cancelGesture);
+    court.addEventListener('lostpointercapture', cancelGesture);
+    court.addEventListener('contextmenu', event => event.preventDefault());
+    court.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) return;
+      event.preventDefault();
+      if (shot || gesture) return;
+      if (event.code === 'Space') {
+        if (!event.repeat) launch(event.shiftKey ? 93 : 65, event.shiftKey ? 58 : 0, 0);
+        return;
+      }
+      shooterX = clamp(shooterX + (event.code === 'ArrowLeft' ? -17 : 17), minX, maxX);
+      trace = [];
+      showZone();
+      schedule();
+    });
+
+    document.getElementById('reset').addEventListener('click', () => {
+      if (gesture && court.hasPointerCapture(gesture.id)) court.releasePointerCapture(gesture.id);
+      gesture = null;
+      finger = null;
+      shot = null;
+      trace = [];
+      netKick = 0;
+      shooterX = startX;
+      for (const score of Object.values(scores)) {
+        score.made = 0;
+        score.total = 0;
+        updateScore(score);
+      }
+      showZone();
+      schedule();
+    });
+
+    new ResizeObserver(resize).observe(court);
+    resize();
+  </script>
+</body>
+</html>
