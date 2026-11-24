@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#fffefa">
-  <title>Flick Court</title>
+  <title>Basketball</title>
   <style>
     :root {
       color-scheme: light;
@@ -20,15 +20,18 @@
     * { box-sizing: border-box; }
     body { margin: 0; }
     main {
-      width: min(100%, 540px);
+      --gutter: min(10vmin, 54px);
+      --court-gain: min(6vmin, 32px);
+      --court-limit: max(300px, calc((100vh - var(--gutter) - 100px) * 400 / 476));
+      --court-limit: max(300px, calc((100dvh - var(--gutter) - 100px) * 400 / 476));
+      width: min(100%, 680px);
       min-height: 100vh;
       min-height: 100dvh;
       margin-inline: auto;
-      padding: min(10vmin, 54px);
+      padding: var(--gutter);
       background: var(--paper);
+      touch-action: manipulation;
     }
-    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-    h1 { margin: 0; font-size: clamp(29px, 8vw, 43px); line-height: 1; letter-spacing: -0.065em; }
     button {
       min-height: 44px;
       padding: 0 10px;
@@ -45,7 +48,7 @@
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 14px;
-      margin: clamp(17px, 5vh, 36px) 0 0;
+      margin: 0;
     }
     .score { border-top: 1px solid var(--ink); padding-top: 8px; }
     .score dt { font-size: 12px; color: var(--muted); }
@@ -60,46 +63,25 @@
     .score.active { color: var(--red); border-color: var(--red); }
     .score span { color: var(--muted); font-size: 0.69em; font-weight: 400; letter-spacing: -0.045em; }
     .score span b { font-weight: inherit; }
-    .prompt { margin-top: clamp(19px, 4.3vh, 32px); }
-    .prompt p { margin: 0; }
-    #zone {
-      color: var(--red);
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-    }
-    #cue { min-height: 2.35em; margin-top: 4px; font-size: clamp(18px, 5.4vw, 24px); line-height: 1.15; letter-spacing: -0.035em; font-weight: 700; }
+    .feedback { display: flex; align-items: center; min-height: 48px; gap: 10px; }
+    #cue { margin: 0; font-size: clamp(16px, 4.3vw, 22px); font-weight: 700; }
+    #reset { margin-left: auto; }
+    .court-frame { margin-inline: calc(-1 * var(--court-gain)); }
     canvas {
       display: block;
-      width: 100%;
-      aspect-ratio: 400 / 394;
+      width: min(100%, var(--court-limit));
+      margin-inline: auto;
+      aspect-ratio: 400 / 476;
       cursor: grab;
       touch-action: none;
       user-select: none;
       -webkit-user-select: none;
     }
     canvas:active { cursor: grabbing; }
-    .guide { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding-top: 11px; border-top: 1px solid var(--rule); }
-    .guide p { margin: 0; font-size: 12px; line-height: 1.35; color: var(--muted); }
-    .guide strong { display: block; margin-bottom: 2px; color: var(--ink); }
-    .guide .active strong { color: var(--red); }
-    .move-tip { margin: clamp(16px, 3.5vh, 24px) 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
-    .keyboard-tip { display: none; }
-    @media (pointer: fine) { .keyboard-tip { display: inline; } }
-    @media (max-height: 600px) and (max-width: 540px) {
-      .scoreboard { margin-top: 14px; }
-      .prompt { margin-top: 15px; }
-      .move-tip { margin-top: 12px; }
-    }
   </style>
 </head>
 <body>
   <main>
-    <header>
-      <h1>Flick Court</h1>
-      <button type="button" id="reset">Reset score</button>
-    </header>
     <dl class="scoreboard" aria-label="Baskets made out of shots taken">
       <div class="score" id="far-score">
         <dt>Far shots</dt>
@@ -110,47 +92,43 @@
         <dd><b id="near-made">0</b><span> / <b id="near-total">0</b></span></dd>
       </div>
     </dl>
-    <section class="prompt" aria-label="Shot instruction">
-      <p id="zone">Near range</p>
-      <p id="cue" role="status">Flick up for a light shot.</p>
-    </section>
-    <canvas id="court" tabindex="0" aria-label="Side-view basketball court" aria-describedby="move-tip" aria-keyshortcuts="ArrowLeft ArrowRight Space Shift+Space">
-      This game needs a browser with canvas support.
-    </canvas>
-    <div class="guide">
-      <p id="far-guide"><strong>Far range</strong>Pull down, then flick up.</p>
-      <p id="near-guide" class="active"><strong>Near range</strong>Flick up.</p>
+    <div class="feedback">
+      <p id="cue" role="status"></p>
+      <button type="button" id="reset" hidden>Reset score</button>
     </div>
-    <p class="move-tip" id="move-tip">Drag left or right to move the black ball. Swipe anywhere on the court to shoot.<span class="keyboard-tip"> On a keyboard, use ← or → to move, Space for a light shot, or Shift + Space for a power shot.</span></p>
+    <div class="court-frame">
+      <canvas id="court" tabindex="0" aria-label="Side-view basketball court" aria-description="Press Enter twice to show Reset score." aria-keyshortcuts="ArrowLeft ArrowRight Space Shift+Space Enter">
+        This game needs a browser with canvas support.
+      </canvas>
+    </div>
   </main>
   <script>
     'use strict';
 
+    const game = document.querySelector('main');
     const court = document.getElementById('court');
     const context = court.getContext('2d');
-    const zoneLabel = document.getElementById('zone');
     const cue = document.getElementById('cue');
+    const resetButton = document.getElementById('reset');
     const ink = '#1d1b19';
     const red = '#bf3828';
     const width = 400;
-    const height = 394;
-    const floor = 320;
+    const height = 476;
+    const floor = 392;
     const boundary = 194;
     const minX = 26;
     const maxX = 274;
     const startX = 246;
-    const radius = 9;
-    const hoop = { left: 310, right: 352, y: 103, board: 355, top: 55, bottom: 114, pole: 377 };
+    const radius = 10;
+    const hoop = { left: 306, right: 352, y: 103, board: 355, top: 55, bottom: 114, pole: 377 };
     const rimCenter = (hoop.left + hoop.right) / 2;
     const gravity = 910;
-    const instructions = { near: 'Flick up for a light shot.', far: 'Pull down, then flick up.' };
     const scores = Object.fromEntries(['far', 'near'].map(name => [name, {
       made: 0,
       total: 0,
       madeLabel: document.getElementById(`${name}-made`),
       totalLabel: document.getElementById(`${name}-total`),
-      card: document.getElementById(`${name}-score`),
-      guide: document.getElementById(`${name}-guide`)
+      card: document.getElementById(`${name}-score`)
     }]));
 
     let shooterX = startX;
@@ -161,6 +139,8 @@
     let netKick = 0;
     let previousFrame = 0;
     let frame = 0;
+    let press = null;
+    let previousTap = null;
 
     const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
     const zone = () => shooterX < boundary ? 'far' : 'near';
@@ -169,14 +149,11 @@
       if (cue.textContent !== message) cue.textContent = message;
     }
 
-    function showZone() {
+    function updateActiveScore() {
       const current = zone();
-      zoneLabel.textContent = current === 'near' ? 'Near range' : 'Far range';
       for (const [name, score] of Object.entries(scores)) {
         score.card.classList.toggle('active', name === current);
-        score.guide.classList.toggle('active', name === current);
       }
-      say(instructions[current]);
     }
 
     function updateScore(score) {
@@ -209,15 +186,10 @@
 
     function draw(now) {
       context.clearRect(0, 0, width, height);
-      const near = zone() === 'near';
       const netBottom = hoop.y + 32 + netKick * 6;
       const netOffset = netKick * 4;
 
-      // Small marks along the baseline show how far the shooter can move.
       segment(12, floor, 386, floor, ink, 1.15);
-      for (let x = minX; x <= maxX; x += 14) segment(x, floor + 1, x, floor + 5, '#d9d3ca');
-      segment(boundary, floor - 14, boundary, floor + 13, '#8d8377', 1);
-      segment(near ? boundary : minX, floor + 10, near ? maxX : boundary, floor + 10, red, 1.25);
 
       line([{ x: hoop.pole, y: floor }, { x: hoop.pole, y: 88 }, { x: hoop.board, y: 88 }], ink, 1.6);
       segment(hoop.board, hoop.top, hoop.board, hoop.bottom, ink, 3);
@@ -239,8 +211,7 @@
       }
 
       segment(hoop.left, hoop.y, hoop.right, hoop.y, red, 2.4);
-      disk(shooterX, floor - 2, radius + 4, '#e7e0d6');
-      disk(shooterX, shot ? floor - 5 : floor - 11, shot ? 5 : 11, ink);
+      disk(shooterX, shot ? floor - 5 : floor - 12, shot ? 5 : 12, ink);
       if (shot) disk(shot.x, shot.y, radius, ink);
     }
 
@@ -285,7 +256,9 @@
       const y = floor - radius - 2;
       const powerError = long ? (pull - 58) * 0.53 + (lift - 93) * 0.15 : (lift - 65) * 0.28;
       const aim = clamp(drift, -100, 100) * 0.62;
-      const peak = weak ? 122 : clamp((long ? 39 : 57) - powerError * 0.62, 18, 91);
+      // A higher arc clears the front of the rim when starting close to it.
+      const nearPeak = 57 - clamp((shooterX - 246) * 1.25, 0, 35);
+      const peak = weak ? 122 : clamp((long ? 39 : nearPeak) - powerError * 0.62, 18, 91);
       const vy = -Math.sqrt(2 * gravity * (y - peak));
       const timeAtRim = (-vy + Math.sqrt(Math.max(0, vy * vy - 2 * gravity * (y - hoop.y)))) / gravity;
       const target = weak ? shooterX + (rimCenter - shooterX) * 0.53 : rimCenter + powerError + aim;
@@ -294,7 +267,7 @@
       updateScore(score);
       shot = { x: shooterX, y, vx: (target - shooterX) / timeAtRim, vy, scored: false, landed: 0, age: 0, weak, target, range };
       trace = [{ x: shooterX, y }];
-      say(weak ? 'That stroke is short for this range.' : 'Shot away.');
+      say('');
       schedule();
     }
 
@@ -361,10 +334,9 @@
         if (!ball.landed) {
           ball.landed = ball.age;
           if (!ball.scored) {
-            if (ball.weak) say('Pull down first for more power.');
-            else if (ball.target < rimCenter - 8) say('Short. Give it a little more.');
-            else if (ball.target > rimCenter + 8) say('Long. Ease off a little.');
-            else say('Off the rim. Try again.');
+            if (ball.weak || ball.target < rimCenter - 8) say('Short.');
+            else if (ball.target > rimCenter + 8) say('Long.');
+            else say('Off the rim.');
           }
         }
       }
@@ -388,12 +360,10 @@
         shooterX = clamp(gesture.x + dx, minX, maxX);
         if (zone() !== gesture.range) {
           gesture.range = zone();
-          showZone();
+          updateActiveScore();
         }
       } else if (gesture.mode === 'shot') {
         if (next.y >= gesture.low.y) gesture.low = next;
-        const pull = gesture.low.y - start.y;
-        if (gesture.range === 'far' && pull >= 26) say('Now flick up.');
       }
 
       const last = finger.points.at(-1);
@@ -409,7 +379,7 @@
       finger = { points: [start], until: Infinity };
       trace = [];
       court.setPointerCapture(event.pointerId);
-      say(instructions[zone()]);
+      say('');
       schedule();
     });
 
@@ -432,8 +402,6 @@
       finger.until = performance.now() + 560;
       if (mode === 'shot' && lift >= 24 && lift > Math.abs(drift) * 0.9) {
         launch(lift, pull, drift);
-      } else {
-        say(instructions[zone()]);
       }
     });
 
@@ -441,16 +409,66 @@
       if (gesture?.id !== event.pointerId) return;
       gesture = null;
       finger = null;
-      say(instructions[zone()]);
       schedule();
     }
+
+    function registerTap(tap) {
+      if (previousTap && previousTap.type === tap.type && tap.time - previousTap.time <= 360 &&
+        Math.hypot(tap.x - previousTap.x, tap.y - previousTap.y) <= 28) {
+        previousTap = null;
+        resetButton.hidden = false;
+        if (tap.type === 'keyboard') resetButton.focus();
+        return;
+      }
+      previousTap = tap;
+    }
+
+    game.addEventListener('pointerdown', event => {
+      if (!event.isPrimary || event.button !== 0 || event.target === resetButton) return;
+      press = { id: event.pointerId, x: event.clientX, y: event.clientY, time: event.timeStamp };
+    });
+
+    game.addEventListener('pointermove', event => {
+      if (press?.id !== event.pointerId) return;
+      if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > 8) {
+        press = null;
+        previousTap = null;
+      }
+    });
+
+    game.addEventListener('pointerup', event => {
+      if (press?.id !== event.pointerId) return;
+      if (event.timeStamp - press.time <= 280 && Math.hypot(event.clientX - press.x, event.clientY - press.y) <= 8) {
+        registerTap({ type: event.pointerType, time: event.timeStamp, x: event.clientX, y: event.clientY });
+      } else {
+        previousTap = null;
+      }
+      press = null;
+    });
+
+    game.addEventListener('pointercancel', event => {
+      if (press?.id !== event.pointerId) return;
+      press = null;
+      previousTap = null;
+    });
+
+    game.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || resetButton.hidden) return;
+      resetButton.hidden = true;
+      court.focus({ preventScroll: true });
+    });
 
     court.addEventListener('pointercancel', cancelGesture);
     court.addEventListener('lostpointercapture', cancelGesture);
     court.addEventListener('contextmenu', event => event.preventDefault());
     court.addEventListener('keydown', event => {
-      if (!['ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) return;
+      if (!['ArrowLeft', 'ArrowRight', 'Space', 'Enter', 'NumpadEnter'].includes(event.code)) return;
       event.preventDefault();
+      if (event.key === 'Enter') {
+        if (!event.repeat) registerTap({ type: 'keyboard', time: event.timeStamp, x: 0, y: 0 });
+        return;
+      }
+      previousTap = null;
       if (shot || gesture) return;
       if (event.code === 'Space') {
         if (!event.repeat) launch(event.shiftKey ? 93 : 65, event.shiftKey ? 58 : 0, 0);
@@ -458,12 +476,16 @@
       }
       shooterX = clamp(shooterX + (event.code === 'ArrowLeft' ? -17 : 17), minX, maxX);
       trace = [];
-      showZone();
+      say('');
+      updateActiveScore();
       schedule();
     });
 
-    document.getElementById('reset').addEventListener('click', () => {
+    resetButton.addEventListener('click', () => {
       if (gesture && court.hasPointerCapture(gesture.id)) court.releasePointerCapture(gesture.id);
+      resetButton.hidden = true;
+      press = null;
+      previousTap = null;
       gesture = null;
       finger = null;
       shot = null;
@@ -475,8 +497,10 @@
         score.total = 0;
         updateScore(score);
       }
-      showZone();
+      updateActiveScore();
+      say('');
       schedule();
+      court.focus({ preventScroll: true });
     });
 
     new ResizeObserver(resize).observe(court);
