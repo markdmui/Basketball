@@ -1,530 +1,262 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#fffefa">
-  <title>Basketball</title>
-  <style>
-    :root {
-      color-scheme: light;
-      --paper: #fffefa;
-      --ink: #1d1b19;
-      --muted: #625d55;
-      --rule: #d9d3ca;
-      --red: #bf3828;
-      font-family: Arial, Helvetica, sans-serif;
-      color: var(--ink);
-      background: #ece8e1;
-    }
-    * { box-sizing: border-box; }
-    body { margin: 0; }
-    main {
-      --gutter: min(10vmin, 54px);
-      --court-gain: min(6vmin, 32px);
-      --court-limit: max(300px, calc((100vh - var(--gutter) - 100px) * 400 / 476));
-      --court-limit: max(300px, calc((100dvh - var(--gutter) - 100px) * 400 / 476));
-      width: min(100%, 680px);
-      min-height: 100vh;
-      min-height: 100dvh;
-      margin-inline: auto;
-      padding: var(--gutter);
-      background: var(--paper);
-      touch-action: manipulation;
-    }
-    button {
-      min-height: 44px;
-      padding: 0 10px;
-      border: 1px solid var(--rule);
-      background: transparent;
-      color: var(--ink);
-      cursor: pointer;
-      white-space: nowrap;
-      font: 700 12px Arial, Helvetica, sans-serif;
-    }
-    button:hover { border-color: var(--ink); }
-    :focus-visible { outline: 2px solid var(--red); outline-offset: 3px; }
-    .scoreboard {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-      margin: 0;
-    }
-    .score { border-top: 1px solid var(--ink); padding-top: 8px; }
-    .score dt { font-size: 12px; color: var(--muted); }
-    .score dd {
-      margin: 3px 0 0;
-      font-size: clamp(27px, 7.5vw, 40px);
-      line-height: 1;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: -0.06em;
-    }
-    .score.active { color: var(--red); border-color: var(--red); }
-    .score span { color: var(--muted); font-size: 0.69em; font-weight: 400; letter-spacing: -0.045em; }
-    .score span b { font-weight: inherit; }
-    .feedback { display: flex; align-items: center; min-height: 48px; gap: 10px; }
-    #cue { margin: 0; font-size: clamp(16px, 4.3vw, 22px); font-weight: 700; }
-    #reset { margin-left: auto; }
-    .court-frame { margin-inline: calc(-1 * var(--court-gain)); }
-    canvas {
-      display: block;
-      width: min(100%, var(--court-limit));
-      margin-inline: auto;
-      aspect-ratio: 400 / 476;
-      cursor: grab;
-      touch-action: none;
-      user-select: none;
-      -webkit-user-select: none;
-    }
-    canvas:active { cursor: grabbing; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Basketball</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: white; }
+  body { color: #131313; font-family: "Helvetica Neue", Arial, sans-serif; }
+  main { position: relative; width: 100%; height: 100%; height: 100dvh; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+  #court { display: block; width: 100%; height: 100%; }
+  .scores { position: absolute; top: max(12%, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); display: flex; pointer-events: none; }
+  .counter { min-width: 100px; padding: 0 18px; text-align: center; }
+  .counter + .counter { border-left: 1px solid #e4e4e4; }
+  .label { display: block; color: #575757; font-size: 12px; font-weight: 500; letter-spacing: .02em; }
+  .value { margin-top: 5px; display: flex; align-items: baseline; justify-content: center; gap: 5px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .made { font-size: 24px; font-weight: 650; }
+  .slash, .attempts { font-size: 15px; }
+  .slash { color: #999; }
+  .attempts { color: #5b5b5b; }
+  #reset { position: absolute; top: calc(max(12%, env(safe-area-inset-top)) + 54px); left: 50%; transform: translateX(-50%); min-height: 44px; padding: 0 16px; border: 1px solid #dedede; border-radius: 24px; background: white; color: #222; font: 500 13px Arial, sans-serif; cursor: pointer; }
+  .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); }
+</style>
 </head>
 <body>
-  <main>
-    <dl class="scoreboard" aria-label="Baskets made out of shots taken">
-      <div class="score" id="far-score">
-        <dt>Far shots</dt>
-        <dd><b id="far-made">0</b><span> / <b id="far-total">0</b></span></dd>
-      </div>
-      <div class="score active" id="near-score">
-        <dt>Near shots</dt>
-        <dd><b id="near-made">0</b><span> / <b id="near-total">0</b></span></dd>
-      </div>
-    </dl>
-    <div class="feedback">
-      <p id="cue" role="status"></p>
-      <button type="button" id="reset" hidden>Reset score</button>
-    </div>
-    <div class="court-frame">
-      <canvas id="court" tabindex="0" aria-label="Side-view basketball court" aria-description="Press Enter twice to show Reset score." aria-keyshortcuts="ArrowLeft ArrowRight Space Shift+Space Enter">
-        This game needs a browser with canvas support.
-      </canvas>
-    </div>
-  </main>
-  <script>
-    'use strict';
-
-    const game = document.querySelector('main');
-    const court = document.getElementById('court');
-    const context = court.getContext('2d');
-    const cue = document.getElementById('cue');
-    const resetButton = document.getElementById('reset');
-    const ink = '#1d1b19';
-    const red = '#bf3828';
-    const width = 400;
-    const baseHeight = 476;
-    const floor = 416;
-    const boundary = 194;
-    const minX = 26;
-    const maxX = 274;
-    const startX = 246;
-    const radius = 10;
-    const hoop = { left: 306, right: 352, y: 103, board: 355, top: 55, bottom: 114, pole: 377 };
-    const rimCenter = (hoop.left + hoop.right) / 2;
-    const gravity = 910;
-    const scores = Object.fromEntries(['far', 'near'].map(name => [name, {
-      made: 0,
-      total: 0,
-      madeLabel: document.getElementById(`${name}-made`),
-      totalLabel: document.getElementById(`${name}-total`),
-      card: document.getElementById(`${name}-score`)
-    }]));
-
-    let shooterX = startX;
-    let gesture = null;
-    let finger = null;
-    let shot = null;
-    let trace = [];
-    let netKick = 0;
-    let previousFrame = 0;
-    let frame = 0;
-    let press = null;
-    let previousTap = null;
-    let floorDrop = 0;
-
-    const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
-    const zone = () => shooterX < boundary ? 'far' : 'near';
-
-    function say(message) {
-      if (cue.textContent !== message) cue.textContent = message;
+<main aria-label="Basketball court" aria-describedby="directions">
+  <p id="directions" class="sr">Drag sideways to move. Flick up for a near shot. For a far shot, pull down first and flick up without lifting. Double-tap the court to show Reset score.</p>
+  <svg id="court" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <g id="equipment" stroke="#151515" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M332 -134 L353 -121 Q360 -117 360 -110 V-8 H353 V-109 Q353 -112 350 -114 L331 -125 Z" fill="#fafafa" stroke-width="2.4"/>
+      <path d="M352 -12 H361 L366 -2 H347 Z" fill="#151515" stroke-width="2"/>
+      <rect x="326" y="-165" width="6" height="66" rx="1.5" fill="white" stroke-width="2.8"/>
+      <path d="M317 -115 H325 V-109 L317 -112" fill="#151515" stroke-width="2"/>
+      <g id="net" fill="none" stroke="#393939" stroke-width="1.65"></g>
+      <ellipse cx="297" cy="-115" rx="22" ry="2.8" fill="white" stroke-width="3"/>
+      <path d="M19 0 H370" fill="none" stroke-width="2.7"/>
+    </g>
+    <g id="trail" fill="none" stroke="#626262" stroke-linecap="round" pointer-events="none"></g>
+    <circle id="ball" r="11" fill="#080808"/>
+  </svg>
+  <section class="scores" aria-label="Score" aria-live="polite">
+    <div class="counter" id="far"><span class="label">Far shots</span><div class="value"><b class="made">0</b><span class="slash">/</span><span class="attempts">0</span></div></div>
+    <div class="counter" id="near"><span class="label">Near shots</span><div class="value"><b class="made">0</b><span class="slash">/</span><span class="attempts">0</span></div></div>
+  </section>
+  <button id="reset" type="button" hidden>Reset score</button>
+</main>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const svg = $('court'), ball = $('ball'), net = $('net'), trail = $('trail');
+  const field = document.querySelector('main'), reset = $('reset');
+  const NS = svg.namespaceURI, rimX = 297, rimY = -115, radius = 11, gravity = 690;
+  const storageKey = 'basketball-2.scores.v1';
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  const blank = () => ({ near: [0, 0], far: [0, 0] });
+  let scores = blank();
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey));
+    if (['near','far'].every(k => Array.isArray(saved?.[k]) && saved[k].length === 2 &&
+        saved[k].every(n => Number.isSafeInteger(n) && n >= 0) && saved[k][0] <= saved[k][1])) scores = saved;
+  } catch {}
+  function showScore(save = false) {
+    for (const k of ['far','near']) {
+      $(k).querySelector('.made').textContent = scores[k][0];
+      $(k).querySelector('.attempts').textContent = scores[k][1];
     }
+    if (save) { try { localStorage.setItem(storageKey, JSON.stringify(scores)); } catch {} }
+  }
 
-    function updateActiveScore() {
-      const current = zone();
-      for (const [name, score] of Object.entries(scores)) {
-        score.card.classList.toggle('active', name === current);
-      }
-    }
-
-    function updateScore(score) {
-      score.madeLabel.textContent = score.made;
-      score.totalLabel.textContent = score.total;
-    }
-
-    function line(points, color, weight = 1, dash = []) {
-      if (points.length < 2) return;
-      context.beginPath();
-      context.moveTo(points[0].x, points[0].y);
-      for (const point of points.slice(1)) context.lineTo(point.x, point.y);
-      context.strokeStyle = color;
-      context.lineWidth = weight;
-      context.setLineDash(dash);
-      context.stroke();
-      context.setLineDash([]);
-    }
-
-    function segment(x1, y1, x2, y2, color, weight = 1) {
-      line([{ x: x1, y: y1 }, { x: x2, y: y2 }], color, weight);
-    }
-
-    function disk(x, y, size, color) {
-      context.beginPath();
-      context.arc(x, y, size, 0, 2 * Math.PI);
-      context.fillStyle = color;
-      context.fill();
-    }
-
-    function courtY(y) {
-      // Stretch the space below the rim while keeping the hoop and shot physics fixed.
-      const depth = clamp((y - hoop.y) / (floor - radius - hoop.y), 0, 1);
-      return y + floorDrop * depth * depth;
-    }
-
-    function draw(now) {
-      context.clearRect(0, 0, width, baseHeight + floorDrop);
-      const ground = floor + floorDrop;
-      const netBottom = hoop.y + 32 + netKick * 6;
-      const netOffset = netKick * 4;
-
-      segment(12, ground, 386, ground, ink, 1.75);
-
-      line([{ x: hoop.pole, y: ground }, { x: hoop.pole, y: 88 }, { x: hoop.board, y: 88 }], ink, 2.15);
-      segment(hoop.board, hoop.top, hoop.board, hoop.bottom, ink, 3.6);
-      segment(hoop.right, hoop.y, hoop.board, hoop.y, ink, 2.6);
-      for (let i = 0; i < 5; i++) {
-        const topX = hoop.left + (hoop.right - hoop.left) * i / 4;
-        const bottomX = rimCenter - 11 + i * 5.5 + netOffset;
-        segment(topX, hoop.y + 2, bottomX, netBottom, '#867d71', 1.15);
-        segment(topX, hoop.y + 2, rimCenter + 11 - i * 5.5 + netOffset, netBottom, '#a3988b', 0.95);
-      }
-      segment(rimCenter - 11 + netOffset, netBottom, rimCenter + 11 + netOffset, netBottom, '#867d71', 1.15);
-
-      line(trace.map(({ x, y }) => ({ x, y: courtY(y) })), shot?.scored ? '#988d80' : '#b5aa9c', 1.65, [3, 4]);
-      if (finger) {
-        const opacity = (gesture ? 1 : clamp((finger.until - now) / 560, 0, 1)) * 0.58;
-        const tip = finger.points.at(-1);
-        line(finger.points, `rgba(191, 56, 40, ${opacity})`, 2.5, [4, 4]);
-        if (finger.points.length > 1) disk(tip.x, tip.y, 3.8, `rgba(191, 56, 40, ${opacity})`);
-      }
-
-      segment(hoop.left, hoop.y, hoop.right, hoop.y, red, 3);
-      const shooterRadius = shot ? 5.5 : 13;
-      disk(shooterX, ground - shooterRadius, shooterRadius, ink);
-      if (shot) disk(shot.x, courtY(shot.y), radius + 1, ink);
-    }
-
-    function schedule() {
-      if (!frame) frame = requestAnimationFrame(animate);
-    }
-
-    function animate(now) {
-      frame = 0;
-      let remaining = previousFrame ? clamp((now - previousFrame) / 1000, 0, 0.05) : 1 / 60;
-      previousFrame = now;
-      while (shot && remaining > 0) {
-        const step = Math.min(remaining, 1 / 120);
-        advanceShot(step);
-        remaining -= step;
-      }
-      if (shot && shot.landed === 0) {
-        const last = trace.at(-1);
-        if (Math.hypot(shot.x - last.x, shot.y - last.y) > 5) trace.push({ x: shot.x, y: shot.y });
-      }
-      netKick *= 0.88;
-      if (finger && !gesture && now >= finger.until) finger = null;
-      draw(now);
-      if (shot || (finger && !gesture) || netKick > 0.02) schedule();
-      else previousFrame = 0;
-    }
-
-    function resize() {
-      const box = court.getBoundingClientRect();
-      if (!box.width) return;
-      const scale = box.width / width;
-      const courtTop = box.top + window.scrollY;
-      const spaceBelow = Math.max(0, window.innerHeight - courtTop - floor * scale);
-      floorDrop = 0.4 * spaceBelow / scale;
-      const viewHeight = baseHeight + floorDrop;
-      const pixels = Math.min(window.devicePixelRatio || 1, 3);
-      const pixelWidth = Math.max(1, Math.round(box.width * pixels));
-      const pixelHeight = Math.max(1, Math.round(viewHeight * scale * pixels));
-      court.style.height = `${viewHeight * scale}px`;
-      if (court.width !== pixelWidth) court.width = pixelWidth;
-      if (court.height !== pixelHeight) court.height = pixelHeight;
-      context.setTransform(court.width / width, 0, 0, court.height / viewHeight, 0, 0);
-      schedule();
-    }
-
-    function launch(lift, pull, drift) {
-      const range = zone();
-      const score = scores[range];
-      const long = range === 'far';
-      const weak = long && pull < 26;
-      const y = floor - radius - 2;
-      const powerError = long ? (pull - 58) * 0.7 + (lift - 93) * 0.22 : (lift - 65) * 0.47;
-      const aim = clamp(drift, -100, 100) * 0.8;
-      // A higher arc clears the front of the rim when starting close to it.
-      const nearPeak = 57 - clamp((shooterX - 246) * 1.25, 0, 35);
-      const peak = weak ? 122 : clamp((long ? 39 : nearPeak) - powerError * 0.62, 18, 91);
-      const vy = -Math.sqrt(2 * gravity * (y - peak));
-      const timeAtRim = (-vy + Math.sqrt(Math.max(0, vy * vy - 2 * gravity * (y - hoop.y)))) / gravity;
-      const target = weak ? shooterX + (rimCenter - shooterX) * 0.53 : rimCenter + powerError + aim;
-
-      score.total++;
-      updateScore(score);
-      shot = { x: shooterX, y, vx: (target - shooterX) / timeAtRim, vy, scored: false, landed: 0, age: 0, weak, target, range };
-      trace = [{ x: shooterX, y }];
-      say('');
-      schedule();
-    }
-
-    function bounceOffRim(ball, rimX) {
-      const dx = ball.x - rimX;
-      const dy = ball.y - hoop.y;
-      const distance = Math.hypot(dx, dy);
-      const contact = radius + 1.7;
-      if (distance >= contact || distance === 0) return;
-      const normalX = dx / distance;
-      const normalY = dy / distance;
-      const incoming = ball.vx * normalX + ball.vy * normalY;
-      ball.x = rimX + normalX * contact;
-      ball.y = hoop.y + normalY * contact;
-      if (incoming < 0) {
-        ball.vx -= 1.57 * incoming * normalX;
-        ball.vy -= 1.57 * incoming * normalY;
-      }
-    }
-
-    function advanceShot(dt) {
-      const ball = shot;
-      const oldX = ball.x;
-      const oldY = ball.y;
-      ball.age += dt;
-      ball.x += ball.vx * dt;
-      ball.y += (ball.vy + gravity * dt * 0.5) * dt;
-      ball.vy += gravity * dt;
-
-      if (!ball.scored && ball.vy > 0 && oldY <= hoop.y && ball.y > hoop.y) {
-        const fraction = (hoop.y - oldY) / (ball.y - oldY);
-        const crossing = oldX + (ball.x - oldX) * fraction;
-        if (crossing > hoop.left + radius && crossing < hoop.right - radius) {
-          ball.scored = true;
-          ball.vx *= 0.32;
-          netKick = 0.62;
-          const score = scores[ball.range];
-          score.made++;
-          updateScore(score);
-          say('Basket!');
-        }
-      }
-
-      if (!ball.scored) {
-        bounceOffRim(ball, hoop.left);
-        bounceOffRim(ball, hoop.right);
-        if (ball.y + radius > hoop.top && ball.y - radius < hoop.bottom) {
-          if (oldX <= hoop.board - radius && ball.x > hoop.board - radius) {
-            ball.x = hoop.board - radius;
-            ball.vx *= -0.58;
-          } else if (oldX >= hoop.board + radius && ball.x < hoop.board + radius) {
-            ball.x = hoop.board + radius;
-            ball.vx *= -0.58;
-          }
-        }
-      } else if (ball.y < hoop.y + 45) {
-        netKick = 1;
-      }
-
-      if (ball.y >= floor - radius && ball.vy > 0) {
-        ball.y = floor - radius;
-        ball.vy *= -0.28;
-        ball.vx *= 0.61;
-        if (!ball.landed) {
-          ball.landed = ball.age;
-          if (!ball.scored) {
-            if (ball.weak || ball.target < rimCenter - 8) say('Short.');
-            else if (ball.target > rimCenter + 8) say('Long.');
-            else say('Off the rim.');
-          }
-        }
-      }
-
-      if ((ball.landed && ball.age - ball.landed > 0.34) || ball.age > 3.4) shot = null;
-    }
-
-    function point(event, box) {
-      const unitsPerPixel = width / box.width;
-      return { x: (event.clientX - box.left) * unitsPerPixel, y: (event.clientY - box.top) * unitsPerPixel };
-    }
-
-    function sample(next) {
-      const { start } = gesture;
-      const dx = next.x - start.x;
-      const dy = next.y - start.y;
-      if (!gesture.mode && Math.hypot(dx, dy) >= 8) {
-        gesture.mode = Math.abs(dx) > Math.abs(dy) * 1.18 ? 'move' : 'shot';
-      }
-
-      if (gesture.mode === 'move') {
-        shooterX = clamp(gesture.x + dx, minX, maxX);
-        if (zone() !== gesture.range) {
-          gesture.range = zone();
-          updateActiveScore();
-        }
-      } else if (gesture.mode === 'shot') {
-        if (next.y >= gesture.low.y) gesture.low = next;
-      }
-
-      const last = finger.points.at(-1);
-      if (Math.hypot(next.x - last.x, next.y - last.y) >= 2) finger.points.push(next);
-      schedule();
-    }
-
-    court.addEventListener('pointerdown', event => {
-      if (shot || gesture || !event.isPrimary || event.button !== 0) return;
-      const box = court.getBoundingClientRect();
-      const start = point(event, box);
-      gesture = { id: event.pointerId, start, low: start, x: shooterX, range: zone(), mode: null };
-      finger = { points: [start], until: Infinity };
-      trace = [];
-      court.setPointerCapture(event.pointerId);
-      say('');
-      schedule();
+  // Court coordinates are measured from the floor so resizing preserves a shot.
+  let scale, left, floor, home = 94, shot = null, gesture = null, lastTap = null;
+  let trace = [], netStart = -Infinity, frame = 0, previous = 0;
+  function place(x, y) {
+    ball.setAttribute('cx', x);
+    ball.setAttribute('cy', y);
+  }
+  function resize() {
+    const w = field.clientWidth, h = field.clientHeight;
+    scale = Math.min(w / 390, h / 395, 1.75);
+    left = (w - 390 * scale) / 2;
+    floor = h * .75;
+    const transform = 'translate(' + left + ' ' + floor + ') scale(' + scale + ')';
+    for (const el of [$('equipment'), trail, ball]) el.setAttribute('transform', transform);
+    gesture = lastTap = null;
+  }
+  // Alternating tied rows give the net open diamonds and a scalloped hem.
+  function mesh() {
+    const rows = [0, 7, 15, 23, 31].map((dy, j) => {
+      const width = [21, 19, 16, 13.5, 12][j];
+      const count = j % 2 ? 4 : 5;
+      return Array.from({length: count}, (_, i) => [
+        rimX + width * ((2 * i + (j % 2)) / 4 - 1), rimY + 2 + dy
+      ]);
     });
-
-    court.addEventListener('pointermove', event => {
-      if (gesture?.id !== event.pointerId) return;
-      const box = court.getBoundingClientRect();
-      const samples = event.getCoalescedEvents?.() ?? [];
-      for (const entry of samples.length ? samples : [event]) sample(point(entry, box));
-    });
-
-    court.addEventListener('pointerup', event => {
-      if (gesture?.id !== event.pointerId) return;
-      const end = point(event, court.getBoundingClientRect());
-      sample(end);
-      const { mode, start, low } = gesture;
-      const pull = low.y - start.y;
-      const lift = low.y - end.y;
-      const drift = end.x - low.x;
-      gesture = null;
-      finger.until = performance.now() + 560;
-      if (mode === 'shot' && lift >= 24 && lift > Math.abs(drift) * 0.9) {
-        launch(lift, pull, drift);
-      }
-    });
-
-    function cancelGesture(event) {
-      if (gesture?.id !== event.pointerId) return;
-      gesture = null;
-      finger = null;
-      schedule();
+    let d = '';
+    const line = (a, b) => { d += 'M' + a.join(' ') + 'L' + b.join(' '); };
+    for (let j = 1; j < rows.length; j++) {
+      const wide = j % 2 ? rows[j-1] : rows[j], narrow = j % 2 ? rows[j] : rows[j-1];
+      narrow.forEach((p, i) => { line(wide[i], p); line(wide[i+1], p); });
     }
-
-    function registerTap(tap) {
-      if (previousTap && previousTap.type === tap.type && tap.time - previousTap.time <= 360 &&
-        Math.hypot(tap.x - previousTap.x, tap.y - previousTap.y) <= 28) {
-        previousTap = null;
-        resetButton.hidden = false;
-        if (tap.type === 'keyboard') resetButton.focus();
-        return;
-      }
-      previousTap = tap;
+    for (const side of [0, -1]) line(rows[0].at(side), rows[4].at(side));
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', d);
+    net.append(path);
+  }
+  function point(e) {
+    return { x: (e.clientX-left)/scale, y: (e.clientY-floor)/scale, t: e.timeStamp };
+  }
+  function wake() {
+    if (!frame) { previous = performance.now(); frame = requestAnimationFrame(tick); }
+  }
+  function ink(p) {
+    trace.push({...p, drawn: performance.now()});
+    if (trace.length > 75) trace.shift();
+    wake();
+  }
+  function drawTrail(now) {
+    trace = trace.filter(p => now-p.drawn < 225);
+    while (trail.childElementCount > Math.max(0, trace.length-1)) trail.lastChild.remove();
+    for (let i=1; i<trace.length; i++) {
+      const a = trace[i-1], b = trace[i];
+      const line = trail.children[i-1] || trail.appendChild(document.createElementNS(NS,'path'));
+      line.setAttribute('d', 'M'+a.x+' '+a.y+'L'+b.x+' '+b.y);
+      line.setAttribute('stroke-width', 2.4);
+      line.setAttribute('opacity', .25 * clamp(1-(now-a.drawn)/225, 0, 1));
     }
-
-    game.addEventListener('pointerdown', event => {
-      if (!event.isPrimary || event.button !== 0 || event.target === resetButton) return;
-      press = { id: event.pointerId, x: event.clientX, y: event.clientY, time: event.timeStamp };
-    });
-
-    game.addEventListener('pointermove', event => {
-      if (press?.id !== event.pointerId) return;
-      if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > 8) {
-        press = null;
-        previousTap = null;
-      }
-    });
-
-    game.addEventListener('pointerup', event => {
-      if (press?.id !== event.pointerId) return;
-      if (event.timeStamp - press.time <= 280 && Math.hypot(event.clientX - press.x, event.clientY - press.y) <= 8) {
-        registerTap({ type: event.pointerType, time: event.timeStamp, x: event.clientX, y: event.clientY });
-      } else {
-        previousTap = null;
-      }
-      press = null;
-    });
-
-    game.addEventListener('pointercancel', event => {
-      if (press?.id !== event.pointerId) return;
-      press = null;
-      previousTap = null;
-    });
-
-    game.addEventListener('keydown', event => {
-      if (event.key !== 'Escape' || resetButton.hidden) return;
-      resetButton.hidden = true;
-      court.focus({ preventScroll: true });
-    });
-
-    court.addEventListener('pointercancel', cancelGesture);
-    court.addEventListener('lostpointercapture', cancelGesture);
-    court.addEventListener('contextmenu', event => event.preventDefault());
-    court.addEventListener('keydown', event => {
-      if (!['ArrowLeft', 'ArrowRight', 'Space', 'Enter', 'NumpadEnter'].includes(event.code)) return;
-      event.preventDefault();
-      if (event.key === 'Enter') {
-        if (!event.repeat) registerTap({ type: 'keyboard', time: event.timeStamp, x: 0, y: 0 });
-        return;
-      }
-      previousTap = null;
-      if (shot || gesture) return;
-      if (event.code === 'Space') {
-        if (!event.repeat) launch(event.shiftKey ? 93 : 65, event.shiftKey ? 58 : 0, 0);
-        return;
-      }
-      shooterX = clamp(shooterX + (event.code === 'ArrowLeft' ? -17 : 17), minX, maxX);
-      trace = [];
-      say('');
-      updateActiveScore();
-      schedule();
-    });
-
-    resetButton.addEventListener('click', () => {
-      if (gesture && court.hasPointerCapture(gesture.id)) court.releasePointerCapture(gesture.id);
-      resetButton.hidden = true;
-      press = null;
-      previousTap = null;
-      gesture = null;
-      finger = null;
-      shot = null;
-      trace = [];
-      netKick = 0;
-      shooterX = startX;
-      for (const score of Object.values(scores)) {
-        score.made = 0;
-        score.total = 0;
-        updateScore(score);
-      }
-      updateActiveScore();
-      say('');
-      schedule();
-      court.focus({ preventScroll: true });
-    });
-
-    new ResizeObserver(resize).observe(court);
-    window.addEventListener('resize', resize);
-    resize();
-  </script>
+  }
+  function launch(g, end) {
+    const lift = g.low.y - end.y;
+    const recent = g.samples.find(p => p.t >= end.t-105) || g.low;
+    const speed = (recent.y-end.y) / Math.max(16, end.t-recent.t);
+    if (lift < 16 || speed < .075) return;
+    const distance = rimX-home, far = distance > 147, key = far ? 'far' : 'near';
+    const pull = Math.max(0, g.low.y-g.start.y);
+    const idealPull = clamp(distance*.32, 45, 88);
+    const load = pull/idealPull;
+    // A comfortable gesture has a forgiving middle band. Beyond it, range
+    // increases again so a hard over-pull can carry the ball past the basket.
+    const charge = load < .76 ? load/.76 : 1 + Math.max(0, load-1.45)*.65;
+    const lightRange = far ? Math.min(119, distance*.72) : distance;
+    const chargedRange = far ? distance-lightRange : 42;
+    const minLift = far && pull > 20 ? 48 : 39;
+    const maxLift = 104 + Math.min(pull, 96);
+    const strength = clamp(Math.min(1, lift/minLift, speed/.28)
+        + Math.max(0,lift-maxLift)/100 + Math.max(0,speed-2.8)*.11, .20, 1.85);
+    const sideways = end.x-g.low.x;
+    const steer = Math.sign(sideways)*Math.max(0,Math.abs(sideways)-6)*.66;
+    const aimedRange = (lightRange + chargedRange*charge)*strength + steer;
+    // Keep a far basket out of reach until the player draws the shot back.
+    const rangeLimit = far ? lightRange + (distance-lightRange+65)*charge : Infinity;
+    const range = Math.max(18,Math.min(aimedRange,rangeLimit));
+    const rise = Math.max(67, (153 + Math.min(range, 280)*.16) * (.58+.42*strength));
+    const vy = -Math.sqrt(2*gravity*rise);
+    const descent = Math.sqrt(Math.max(0, vy*vy-2*gravity*(-radius-rimY)));
+    const travel = (-vy+descent)/gravity;
+    shot = { x: home, y: -radius, vx: range/travel, vy, key, made: false, groundHits: 0, age: 0 };
+    scores[key][1]++;
+    showScore(true);
+    wake();
+  }
+  function rimContact(s, x) {
+    const dx = s.x-x, dy = s.y-rimY, len = Math.hypot(dx,dy), min = radius+1.5;
+    if (len >= min || len < .001) return;
+    const nx = dx/len, ny = dy/len, approach = s.vx*nx + s.vy*ny;
+    s.x = x+nx*min; s.y = rimY+ny*min;
+    if (approach < 0) { s.vx -= 1.52*approach*nx; s.vy -= 1.52*approach*ny; }
+  }
+  function advance(dt, now) {
+    const s = shot, oldY = s.y, oldX = s.x;
+    s.age += dt;
+    s.x += s.vx*dt;
+    s.y += s.vy*dt + .5*gravity*dt*dt;
+    s.vy += gravity*dt;
+    if (s.y > -165-radius && s.y < -99+radius && oldX <= 326-radius && s.x > 326-radius) {
+      s.x = 326-radius; s.vx = -Math.abs(s.vx)*.63;
+    }
+    rimContact(s,rimX-22); rimContact(s,rimX+22);
+    if (!s.made && !s.groundHits && oldY < rimY && s.y >= rimY && s.vy > 0 && Math.abs(s.x-rimX) < 22-radius) {
+      s.made = true; scores[s.key][0]++;
+      showScore(true);
+      s.vx *= .25; s.vy *= .80; netStart = now;
+    }
+    if (s.y >= -radius && s.vy > 0) {
+      s.y = -radius; s.vy *= -.32; s.vx *= .56; s.groundHits++;
+    }
+    if (s.groundHits >= 2 || s.age > 3.3 || s.x > 410 || s.x < -20) {
+      shot = null; place(home,-radius);
+    } else place(s.x,s.y);
+  }
+  function tick(now) {
+    frame = 0;
+    let dt = Math.min(.05, (now-previous)/1000);
+    previous = now;
+    while (shot && dt > .000001) {
+      const step = Math.min(dt,1/180); advance(step,now); dt -= step;
+    }
+    if (trace.length || trail.childElementCount) drawTrail(now);
+    const t = (now-netStart)/1000;
+    if (t < .55) {
+      const stretch = 1 + .26*Math.exp(-6*t)*Math.sin(16*t);
+      net.setAttribute('transform','translate(0 '+rimY+') scale(1 '+stretch+') translate(0 '+(-rimY)+')');
+    } else net.removeAttribute('transform');
+    if (shot || trace.length || t < .55) frame = requestAnimationFrame(tick);
+  }
+  field.addEventListener('pointerdown', e => {
+    if (e.target === reset || !e.isPrimary || e.button !== 0 || gesture) return;
+    const p = point(e);
+    gesture = { id:e.pointerId, start:p, low:p, samples:[p], mode:'pending', home, busy:!!shot };
+    field.setPointerCapture(e.pointerId);
+    trace = [];
+  });
+  function sample(g,p) {
+    const dx = p.x-g.start.x, dy = p.y-g.start.y;
+    if (g.mode === 'pending' && Math.hypot(dx,dy) > 7) {
+      g.mode = Math.abs(dx) > Math.abs(dy)*1.35 ? 'move' : 'shoot';
+      reset.hidden = true; lastTap = null; ink(g.start);
+    }
+    if (g.mode === 'pending') return;
+    ink(p);
+    if (g.busy) return;
+    if (g.mode === 'move') {
+      home = clamp(g.home+dx,31,235); place(home,-radius);
+    } else {
+      if (p.y > g.low.y) { g.low = p; g.samples = []; }
+      g.samples.push(p);
+      g.samples = g.samples.filter(s => s.t >= p.t-140);
+    }
+  }
+  field.addEventListener('pointermove', e => {
+    if (gesture && e.pointerId === gesture.id) sample(gesture,point(e));
+  });
+  field.addEventListener('pointerup', e => {
+    if (!gesture || gesture.id !== e.pointerId) return;
+    const g = gesture, p = point(e);
+    sample(g,p); gesture = null;
+    if (g.mode === 'pending' && p.t-g.start.t < 240) {
+      if (lastTap && p.t-lastTap.t < 310 && Math.hypot(p.x-lastTap.x,p.y-lastTap.y) < 22) {
+        reset.hidden = false; lastTap = null;
+      } else { lastTap = p; reset.hidden = true; }
+    } else {
+      lastTap = null; reset.hidden = true;
+      if (g.mode === 'shoot' && !g.busy && !shot) launch(g,p);
+    }
+  });
+  function cancel(e) {
+    if (gesture?.id === e.pointerId) { gesture = lastTap = null; reset.hidden = true; }
+  }
+  field.addEventListener('pointercancel',cancel);
+  field.addEventListener('lostpointercapture',cancel);
+  reset.addEventListener('click', () => {
+    shot = gesture = lastTap = null; netStart = -Infinity;
+    scores = blank(); showScore(true); place(home,-radius); reset.hidden = true;
+  });
+  window.addEventListener('resize',resize);
+  mesh(); resize(); place(home,-radius); showScore();
+})();
+</script>
 </body>
 </html>
